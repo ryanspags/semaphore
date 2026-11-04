@@ -4,9 +4,6 @@
   become: true
   serial: 1
 
-  vars:
-    reboot_required_file: /var/run/reboot-required
-
   tasks:
     - name: Refresh package metadata
       ansible.builtin.dnf:
@@ -14,8 +11,8 @@
 
     - name: Apply all updates
       ansible.builtin.dnf:
-      name: "*"
-      state: latest
+        name: "*"
+        state: latest
 
     - name: Check if reboot is required
       ansible.builtin.command: needs-restarting -r
