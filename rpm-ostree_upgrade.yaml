@@ -1,0 +1,22 @@
+---
+- name: Upgrade rpm-ostree hosts
+  hosts: ostree
+  become: yes
+  serial: 1
+
+  tasks:
+    - name: Check deployment status
+      ansible.builtin.command: rpm-ostree status --json
+      register: ostree_status
+      changed_when: false
+
+    - name: Upgrade system
+      ansible.builtin.command: rpm-ostree upgrade
+      register: ostree_upgrade
+      changed_when: "'No upgrade available' not in ostree_upgrade.stdout"
+      failed_when: ostree_upgrade.rc != 0
+
+    - name: Reboot if upgrade was applied
+      ansible.builtin.reboot:
+        reboot_timeout: 1800
+      when: ostree_upgrade.stdout is not search("No upgrade available")
