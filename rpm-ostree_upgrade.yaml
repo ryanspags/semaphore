@@ -14,24 +14,56 @@
       ansible.builtin.set_fact:
         ostree_data: "{{ ostree_status.stdout | from_json }}"
 
+    - name: Identify booted deployment
+      ansible.builtin.set_fact:
+        booted_deployment: >-
+          {{
+            ostree_data.deployments
+            | selectattr('booted', 'equalto', true)
+            | list
+            | first
+          }}
+
+    - name: Identify staged deployment
+      ansible.builtin.set_fact:
+        staged_deployment: >-
+          {{
+            ostree_data.deployments
+            | selectattr('booted', 'equalto', false)
+            | list
+            | first
+            | default({})
+          }}
+
+    - name: Determine if reboot is pending
+      ansible.builtin.set_fact:
+        reboot_pending: "{{ staged_deployment | length > 0 }}"
+
     - name: Reboot if a pending deployment exists
       ansible.builtin.reboot:
         reboot_timeout: 1800
-      when: ostree_data.deployments | length > 1
+        connect_timeout: 10
+        test_command: whoami
+        post_reboot_delay: 15
+      when: reboot_pending
 
     - name: Check if an upgrade is available
       ansible.builtin.command: rpm-ostree upgrade --check
       register: upgrade_check
       changed_when: false
       failed_when: false
+      when: not reboot_pending
 
     - name: Upgrade system if available
       ansible.builtin.command: rpm-ostree upgrade
       register: ostree_upgrade
-      when: upgrade_check.rc == 0
+      when: not reboot_pending and upgrade_check.rc == 0
       changed_when: true
 
     - name: Reboot if upgrade was applied
       ansible.builtin.reboot:
         reboot_timeout: 1800
-      when: upgrade_check.rc == 0
+        connect_timeout: 10
+        test_command: whoami
+        post_reboot_delay: 15
+      when: not reboot_pending and upgrade_check.rc == 0
