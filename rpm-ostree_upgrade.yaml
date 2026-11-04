@@ -1,22 +1,41 @@
 ---
-- name: Upgrade rpm-ostree hosts
-  hosts: ostree
+- name: Upgrade rpm-ostree hosts safely
+  hosts: rpm-ostree_servers
   become: yes
   serial: 1
 
   tasks:
-    - name: Check deployment status
+    - name: Get rpm-ostree status
       ansible.builtin.command: rpm-ostree status --json
       register: ostree_status
       changed_when: false
 
-    - name: Upgrade system
+    - name: Parse status JSON
+      ansible.builtin.set_fact:
+        ostree_data: "{{ ostree_status.stdout | from_json }}"
+
+    - name: Fail if host already has a pending deployment
+      ansible.builtin.fail:
+        msg: "Host already has a pending deployment; reboot before running upgrades again."
+      when: ostree_data.deployments | length > 1
+
+    - name: Check if an upgrade is available
+      ansible.builtin.command: rpm-ostree upgrade --check
+      register: upgrade_check
+      changed_when: false
+      failed_when: false
+
+    - name: Upgrade system if available
       ansible.builtin.command: rpm-ostree upgrade
       register: ostree_upgrade
-      changed_when: "'No upgrade available' not in ostree_upgrade.stdout"
-      failed_when: ostree_upgrade.rc != 0
+      when: upgrade_check.rc == 0
+      changed_when: true
+
+    - name: Set reboot needed fact
+      ansible.builtin.set_fact:
+        reboot_needed: "{{ upgrade_check.rc == 0 }}"
 
     - name: Reboot if upgrade was applied
       ansible.builtin.reboot:
         reboot_timeout: 1800
-      when: ostree_upgrade.stdout is not search("No upgrade available")
+      when: reboot_needed
