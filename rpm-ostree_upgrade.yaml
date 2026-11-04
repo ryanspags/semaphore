@@ -31,18 +31,11 @@
         post_reboot_delay: 15
       when: reboot_pending
 
-    - name: Check if an upgrade is available
-      ansible.builtin.command: rpm-ostree upgrade --check
-      register: upgrade_check
-      changed_when: false
-      failed_when: false
-      when: not reboot_pending
-
-    - name: Upgrade system if available
+    - name: Upgrade system
       ansible.builtin.command: rpm-ostree upgrade
       register: ostree_upgrade
-      when: not reboot_pending and upgrade_check.rc == 0
-      changed_when: true
+      changed_when: "'No upgrade available' not in ostree_upgrade.stdout"
+      when: not reboot_pending
 
     - name: Reboot if upgrade was applied
       ansible.builtin.reboot:
@@ -50,4 +43,4 @@
         connect_timeout: 10
         test_command: whoami
         post_reboot_delay: 15
-      when: not reboot_pending and upgrade_check.rc == 0
+      when: not reboot_pending and ostree_upgrade.changed
