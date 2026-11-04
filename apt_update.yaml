@@ -1,0 +1,51 @@
+---
+- name: Update Debian and Ubuntu servers
+  hosts: debian_servers
+  become: true
+  gather_facts: true
+  serial: 1
+  any_errors_fatal: true
+  vars:
+    reboot_if_required: false
+
+  pre_tasks:
+    - name: Verify the host uses APT
+      ansible.builtin.assert:
+        that:
+          - ansible_facts.pkg_mgr == 'apt'
+        fail_msg: This playbook requires an APT-based system.
+
+  tasks:
+    - name: Refresh package index
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 0
+        lock_timeout: 300
+
+    - name: Upgrade installed packages
+      ansible.builtin.apt:
+        upgrade: dist
+        force_apt_get: true
+        fail_on_autoremove: true
+        dpkg_options: force-confdef,force-confold
+        lock_timeout: 300
+
+    - name: Check the reboot-required marker
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_marker
+
+    - name: Report reboot status
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'Reboot required (marker present).'
+             if reboot_marker.stat.exists
+             else 'No reboot-required marker found; this does not guarantee no reboot is needed.' }}
+
+    - name: Reboot when enabled and the marker is present
+      ansible.builtin.reboot:
+        reboot_timeout: 900
+        post_reboot_delay: 15
+      when:
+        - reboot_if_required | bool
+        - reboot_marker.stat.exists
