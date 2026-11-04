@@ -1,0 +1,29 @@
+---
+- name: Patch Rocky Linux servers
+  hosts: rocky
+  become: true
+  serial: 1
+
+  vars:
+    reboot_required_file: /var/run/reboot-required
+
+  tasks:
+    - name: Refresh package metadata
+      ansible.builtin.dnf:
+        update_cache: yes
+
+    - name: Apply all updates
+      ansible.builtin.dnf:
+      name: "*"
+      state: latest
+
+    - name: Check if reboot is required
+      ansible.builtin.command: needs-restarting -r
+      register: reboot_check
+      failed_when: false
+      changed_when: false
+
+    - name: Reboot if needed
+      ansible.builtin.reboot:
+        reboot_timeout: 1800
+      when: reboot_check.rc != 0
