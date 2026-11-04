@@ -4,15 +4,19 @@
   become: yes
   serial: 1
 
+  environment:
+    TERM: dumb
+    LANG: C
+    LC_ALL: C
+
   tasks:
     - name: Get rpm-ostree status before upgrade
-      ansible.builtin.command: rpm-ostree status --json
+      ansible.builtin.shell: rpm-ostree status --json
+      args:
+        executable: /bin/bash
       register: ostree_status_before
       changed_when: false
-      vars:
-        ansible_ssh_pipelining: true
-      environment:
-        TERM: dumb
+      no_log: true
 
     - name: Parse status JSON before upgrade
       ansible.builtin.set_fact:
@@ -32,21 +36,23 @@
       when: reboot_pending
 
     - name: Upgrade system
-      ansible.builtin.command: rpm-ostree upgrade
+      ansible.builtin.shell: rpm-ostree upgrade
+      args:
+        executable: /bin/bash
       register: ostree_upgrade
       changed_when: ostree_upgrade.rc == 0
       failed_when: ostree_upgrade.rc != 0
       when: not reboot_pending
+      no_log: true
 
     - name: Get rpm-ostree status after upgrade
-      ansible.builtin.command: rpm-ostree status --json
+      ansible.builtin.shell: rpm-ostree status --json
+      args:
+        executable: /bin/bash
       register: ostree_status_after
       changed_when: false
-      vars:
-        ansible_ssh_pipelining: true
-      environment:
-        TERM: dumb
       when: not reboot_pending
+      no_log: true
 
     - name: Parse status JSON after upgrade
       ansible.builtin.set_fact:
