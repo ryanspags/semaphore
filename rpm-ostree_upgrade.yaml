@@ -5,24 +5,23 @@
   serial: 1
 
   tasks:
-    - name: Get rpm-ostree status
+    - name: Get rpm-ostree status before upgrade
       ansible.builtin.command: rpm-ostree status --json
-      register: ostree_status
+      register: ostree_status_before
       changed_when: false
+      vars:
+        ansible_ssh_pipelining: true
+      environment:
+        TERM: dumb
 
-    - name: Parse status JSON
+    - name: Parse status JSON before upgrade
       ansible.builtin.set_fact:
-        ostree_data: "{{ ostree_status.stdout | from_json }}"
+        booted_before: "{{ (ostree_status_before.stdout | from_json).deployments | selectattr('booted', 'equalto', true) | list | first }}"
+        top_before: "{{ (ostree_status_before.stdout | from_json).deployments | first }}"
 
-    - name: Set deployment facts
+    - name: Determine if reboot is pending
       ansible.builtin.set_fact:
-        booted_deployment: "{{ ostree_data.deployments | selectattr('booted', 'equalto', true) | list | first }}"
-        top_deployment: "{{ ostree_data.deployments | first }}"
-        pending_deployment: "{{ ostree_data.deployments | selectattr('booted', 'equalto', false) | list | first | default({}) }}"
-
-    - name: Determine whether reboot is pending
-      ansible.builtin.set_fact:
-        reboot_pending: "{{ pending_deployment | length > 0 and booted_deployment.checksum != top_deployment.checksum }}"
+        reboot_pending: "{{ booted_before.checksum != top_before.checksum }}"
 
     - name: Reboot if a pending deployment exists
       ansible.builtin.reboot:
@@ -35,7 +34,24 @@
     - name: Upgrade system
       ansible.builtin.command: rpm-ostree upgrade
       register: ostree_upgrade
-      changed_when: "'No upgrade available' not in ostree_upgrade.stdout"
+      changed_when: ostree_upgrade.rc == 0
+      failed_when: ostree_upgrade.rc != 0
+      when: not reboot_pending
+
+    - name: Get rpm-ostree status after upgrade
+      ansible.builtin.command: rpm-ostree status --json
+      register: ostree_status_after
+      changed_when: false
+      vars:
+        ansible_ssh_pipelining: true
+      environment:
+        TERM: dumb
+      when: not reboot_pending
+
+    - name: Parse status JSON after upgrade
+      ansible.builtin.set_fact:
+        booted_after: "{{ (ostree_status_after.stdout | from_json).deployments | selectattr('booted', 'equalto', true) | list | first }}"
+        top_after: "{{ (ostree_status_after.stdout | from_json).deployments | first }}"
       when: not reboot_pending
 
     - name: Reboot if upgrade was applied
@@ -44,4 +60,6 @@
         connect_timeout: 10
         test_command: whoami
         post_reboot_delay: 15
-      when: not reboot_pending and ostree_upgrade.changed
+      when:
+        - not reboot_pending
+        - booted_before.checksum != top_after.checksum
