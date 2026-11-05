@@ -1,0 +1,36 @@
+---
+- name: Restart Dozzle agents
+  hosts: podman_servers
+  become: true
+  gather_facts: false
+
+  vars:
+    podman_user: core
+    podman_uid: 1000
+    dozzle_service: dozzle-agent.service
+
+  tasks:
+    - name: Restart Dozzle agent Quadlet service
+      ansible.builtin.systemd_service:
+        name: "{{ dozzle_service }}"
+        state: restarted
+        scope: user
+      become_user: "{{ podman_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ podman_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ podman_uid }}/bus"
+
+    - name: Verify Dozzle agent is running
+      ansible.builtin.systemd_service:
+        name: "{{ dozzle_service }}"
+        state: started
+        scope: user
+      become_user: "{{ podman_user }}"
+      environment:
+        XDG_RUNTIME_DIR: "/run/user/{{ podman_uid }}"
+        DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ podman_uid }}/bus"
+      register: dozzle_status
+
+    - name: Display agent status
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: Dozzle agent is {{ dozzle_status.status.ActiveState }}"
